@@ -31,12 +31,21 @@ async def get_total_clicks(
         SELECT 123 AS test_value;
     """
     
-    # Original query
+    # Original query that requires dimdate table
     original_query = """
         SELECT COALESCE(COUNT(ffc.clickfactkey), 0) AS total_clicks
         FROM factlinkclicks ffc
         JOIN dimdate dd ON ffc.datekey = dd.datekey
         WHERE dd.fulldate >= $1 AND dd.fulldate <= $2;
+    """
+    
+    # Modified query that works directly with datekey in factlinkclicks
+    # This converts the date parameters to integer format (YYYYMMDD) to match your datekey column
+    direct_query = """
+        SELECT COALESCE(COUNT(clickfactkey), 0) AS total_clicks
+        FROM factlinkclicks
+        WHERE datekey >= TO_CHAR($1::date, 'YYYYMMDD')::integer 
+          AND datekey <= TO_CHAR($2::date, 'YYYYMMDD')::integer;
     """
     
     # Even more simplified query if tables don't exist
@@ -53,15 +62,23 @@ async def get_total_clicks(
         # If test query works, try the real query
         if test_result is not None:
             try:
-                logger.info("Test successful, trying actual query")
-                result = await db.fetchval(original_query, start_date, end_date)
-                logger.info(f"Actual query result: {result}")
+                logger.info("Test successful, trying direct query that works with factlinkclicks table")
+                result = await db.fetchval(direct_query, start_date, end_date)
+                logger.info(f"Direct query result: {result}")
                 return schemas.KPIResponse(value=result if result is not None else 0)
-            except Exception as query_error:
-                # If the actual query fails (e.g., tables don't exist), use fallback
-                logger.warning(f"Actual query failed: {query_error}. Using fallback.")
-                result = await db.fetchval(fallback_query)
-                return schemas.KPIResponse(value=result if result is not None else 0)
+            except Exception as direct_error:
+                logger.warning(f"Direct query failed: {direct_error}. Trying original query...")
+                
+                try:
+                    # Try the original query as fallback
+                    result = await db.fetchval(original_query, start_date, end_date)
+                    logger.info(f"Original query result: {result}")
+                    return schemas.KPIResponse(value=result if result is not None else 0)
+                except Exception as query_error:
+                    # If both queries fail, use simple fallback
+                    logger.warning(f"All queries failed: {query_error}. Using fallback.")
+                    result = await db.fetchval(fallback_query)
+                    return schemas.KPIResponse(value=result if result is not None else 0)
         else:
             # If even test query fails, return 0
             logger.warning("Test query failed, returning default value")

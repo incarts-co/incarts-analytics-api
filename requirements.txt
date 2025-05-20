@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+supabase
+httpx
+psycopg2-binary
+sqlalchemy  # For potential future use or if preferred for query building, though not strictly used for raw SQL here
+python-dotenv # To load .env file for local development
